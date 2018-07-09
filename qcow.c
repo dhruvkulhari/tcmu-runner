@@ -401,7 +401,7 @@ static int qcow_setup_backing_file(struct bdev *bdev, struct qcow_header *header
 		return -1;
 	}
 	backing_file[len] = '\0';
-
+	tcmu_dbg("backing file name %s \n", backing_file);
 	s->backing_image = calloc(1, sizeof(struct bdev));
 	if (!s->backing_image)
 		return -1;
@@ -1121,10 +1121,39 @@ static uint64_t get_cluster_offset(struct qcow_state *s, const uint64_t offset, 
 		/* sector not allocated in image file */
 		if (!allocate || !(cluster_offset = qcow_cluster_alloc(s)))
 			return 0;
+
+		if (allocate && s->backing_image) {
+			/* CoW from	 backing file */
+			uint8_t *cow_buffer;
+			uint64_t i,x;
+			struct iovec r_iov[1];
+			off_t read_offset = offset & (~(s->cluster_size - 1));
+			tcmu_dbg("CoW from backing file %s\n", s->backing_image);
+
+			if (!(cow_buffer = malloc(s->cluster_size)))
+				goto fail;
+
+			r_iov[0].iov_base = cow_buffer;
+			r_iov[0].iov_len = s->cluster_size;
+			tcmu_dbg("reading from backing file at offset = %" PRIx64 "\n", read_offset);
+
+			if (s->backing_image->ops->preadv(s->backing_image, r_iov, 1, read_offset) != s->cluster_size) {
+				tcmu_err("reading cluster from backing file failed at offset = %" PRIx64 "\n", read_offset);
+				goto fail;
+			}
+
+			for(i = x = 0; i < s->cluster_size/sizeof(x) && !x; x |= cow_buffer[i++]); //check for zero buffer
+
+			if (x && pwrite(s->fd, cow_buffer, s->cluster_size, cluster_offset) != s->cluster_size){
+				tcmu_err("error on CoW from backing file at cluster_offset = %" PRIx64 "\n", cluster_offset);
+				goto fail;
+			}
+			free(cow_buffer);
+		}
 		l2_table_update(s, l2_table, l2_offset, l2_index, cluster_offset | s->cluster_copied);
 		s->set_refcount(s, cluster_offset, 1);
 	} else if ((cluster_offset & s->cluster_compressed) && allocate) {
-		tcmu_err("re-allocating compressed cluster for writing\n");
+		tcmu_dbg("re-allocating compressed cluster for writing\n");
 		/* reallocate a compressed cluster for writing */
 		if (decompress_cluster(s, cluster_offset) < 0)
 			return 0;
@@ -1139,7 +1168,7 @@ static uint64_t get_cluster_offset(struct qcow_state *s, const uint64_t offset, 
 		// TODO what if this is compressed?
 		uint8_t *cow_buffer;
 
-		tcmu_err("re-allocating shared cluster for writing\n");
+		tcmu_dbg("re-allocating shared cluster for writing\n");
 		/* refcount > 1 (the copied bit means refcount == 1)
 		 * need to make a new copy if this is for a write */
 		if (!(cow_buffer = malloc(s->cluster_size)))
