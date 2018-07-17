@@ -16,6 +16,7 @@ BuildRequires: libnl3-devel glib2-devel zlib-devel kmod-devel
 BuildRequires: glusterfs-api-devel librados2-devel librbd1-devel
 
 Requires(pre): librados2, librbd1, kmod, zlib, libnl3, glib2, glusterfs-api
+Requires:       targetcli
 
 %description
 A daemon that handles the userspace side of the LIO TCM-User backstore.
@@ -65,11 +66,14 @@ userspace libraries they like.
 %dir %{_usr}/lib64/tcmu-runner/
 %{_usr}/lib64/tcmu-runner/*
 %{_mandir}/man8/*
-%doc README.md LICENSE
+%doc README.md
+%license LICENSE.Apache2 LICENSE.LGPLv2.1
 %{_usr}/lib64/*
 %dir %{_sysconfdir}/tcmu/
 %config %{_sysconfdir}/tcmu/tcmu.conf
 
 %changelog
+* Tue Jul 10 2018 Dhruv Kulhari <dhruv.kulhari@coriolis.co.in> - 1.4.0-rc1
+- Fixed build failure due to missing LICENSE file
 * Tue Oct 31 2017 Xiubo Li <lixiubo@cmss.chinamobile.com> - 1.3.0-rc4
 - Initial tcmu-runner packaging
